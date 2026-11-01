@@ -1,9 +1,15 @@
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const csrf = document.cookie
+    .split(';')
+    .map((c) => c.trim())
+    .find((c) => c.startsWith('csrf_token='))
+    ?.split('=')[1];
   const res = await fetch(path, {
     ...init,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(csrf ? { 'x-csrf-token': decodeURIComponent(csrf) } : {}),
       ...(init?.headers || {})
     }
   });

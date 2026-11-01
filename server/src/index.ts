@@ -2,6 +2,7 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { config } from './config.js';
@@ -13,11 +14,25 @@ import { mockRouter } from './routes/mock.js';
 import { webhookRouter } from './routes/webhooks.js';
 
 const app = express();
+const publicOrigin = new URL(config.PUBLIC_BASE_URL).origin;
+const globalLimiter = rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false });
 
 app.use(helmet());
 app.use(cookieParser());
+app.use(globalLimiter);
 app.use('/api/webhooks/paypal', express.raw({ type: 'application/json', limit: '1mb' }));
 app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+  const needsCsrf = !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.path.startsWith('/api/') && req.path !== '/api/webhooks/paypal';
+  if (!needsCsrf || !req.cookies.session) return next();
+  const origin = req.get('origin') || req.get('referer') || '';
+  const headerToken = req.get('x-csrf-token');
+  const cookieToken = req.cookies.csrf_token;
+  if (!origin.startsWith(publicOrigin) || !headerToken || headerToken !== cookieToken) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  return next();
+});
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
