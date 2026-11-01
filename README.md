@@ -41,7 +41,7 @@ See `.env.example`.
 1. Push this repository.
 2. Create one Render Web Service from the repo.
 3. Render uses `render.yaml`:
-   - Build: `npm ci && npm run build`
+   - Build: `npm ci --include=dev && npm run build`
    - Start: `npm start`
 4. When Render prompts for Blueprint environment variables, enter:
    - `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from the Turso database.
