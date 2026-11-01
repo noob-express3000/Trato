@@ -43,7 +43,16 @@ See `.env.example`.
 3. Render uses `render.yaml`:
    - Build: `npm ci && npm run build`
    - Start: `npm start`
-4. Set production env vars (JWT, Turso URL/token, PayPal credentials/webhook id, base URL).
+4. When Render prompts for Blueprint environment variables, enter:
+   - `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from the Turso database.
+   - `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, and `PAYPAL_WEBHOOK_ID` from PayPal Sandbox.
+   - `PUBLIC_BASE_URL` as the deployed service URL, such as `https://trato.onrender.com`.
+5. Render generates `JWT_SECRET` automatically. Keep `NODE_ENV=production` and
+   `PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com`.
+
+If the Web Service already exists, add the same variables under Render's
+Environment settings before redeploying. Do not commit these values to the
+repository.
 
 ## How PayPal is used (hackathon summary)
 
