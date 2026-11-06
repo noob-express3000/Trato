@@ -1,4 +1,4 @@
-import { createClient } from '@libsql/client';
+import { createClient, type Transaction } from '@libsql/client';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
@@ -51,14 +51,18 @@ export async function bootstrapDb() {
   }
 }
 
-export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
-  await db.execute('BEGIN IMMEDIATE');
+export async function withTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
+  const tx = await db.transaction('write');
   try {
-    const result = await fn();
-    await db.execute('COMMIT');
+    const result = await fn(tx);
+    await tx.commit();
     return result;
   } catch (error) {
-    await db.execute('ROLLBACK');
+    try {
+      await tx.rollback();
+    } catch {
+      // Preserve the original database error if the driver already rolled back.
+    }
     throw error;
   }
 }

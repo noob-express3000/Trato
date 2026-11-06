@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Transaction } from '@libsql/client';
 import { db, withTransaction } from '../db.js';
 import { config } from '../config.js';
 import { deriveJob } from '../derive.js';
@@ -11,8 +12,8 @@ async function getJobByInvoiceId(invoiceId: string) {
   return row.rows[0] as any;
 }
 
-async function getEvents(jobId: string) {
-  const rows = await db.execute({ sql: 'SELECT id, type, payload, actor, created_at FROM job_events WHERE job_id = ? ORDER BY id ASC', args: [jobId] });
+async function getEvents(jobId: string, executor: typeof db | Transaction = db) {
+  const rows = await executor.execute({ sql: 'SELECT id, type, payload, actor, created_at FROM job_events WHERE job_id = ? ORDER BY id ASC', args: [jobId] });
   return rows.rows.map((r: any) => ({ ...r, payload: JSON.parse(String(r.payload)) }));
 }
 
@@ -27,12 +28,12 @@ mockRouter.post('/mock-pay/:invoiceId/pay', async (req, res) => {
   markMockPaid(invoiceId);
   const job = await getJobByInvoiceId(invoiceId);
   if (job) {
-    await withTransaction(async () => {
-      const state = deriveJob(await getEvents(String(job.id)));
+    await withTransaction(async (tx) => {
+      const state = deriveJob(await getEvents(String(job.id), tx));
       if (state.invoice?.status === 'paid') return;
       const remote = await getInvoiceStatus(invoiceId);
       if (remote.status === 'PAID') {
-        await db.execute({
+        await tx.execute({
           sql: 'INSERT INTO job_events (job_id, type, payload, actor, created_at) VALUES (?, ?, ?, ?, ?)',
           args: [job.id, 'INVOICE_PAID', JSON.stringify({ paypal_invoice_id: invoiceId, amount_usd_cents: state.total_cents }), 'paypal', new Date().toISOString()]
         });

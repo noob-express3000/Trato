@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Transaction } from '@libsql/client';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db, withTransaction } from '../db.js';
@@ -18,13 +19,13 @@ async function getClientJob(token: string) {
   return row.rows[0] as any;
 }
 
-async function getEvents(jobId: string) {
-  const rows = await db.execute({ sql: 'SELECT id, type, payload, actor, created_at FROM job_events WHERE job_id = ? ORDER BY id ASC', args: [jobId] });
+async function getEvents(jobId: string, executor: typeof db | Transaction = db) {
+  const rows = await executor.execute({ sql: 'SELECT id, type, payload, actor, created_at FROM job_events WHERE job_id = ? ORDER BY id ASC', args: [jobId] });
   return rows.rows.map((r: any) => ({ ...r, payload: JSON.parse(String(r.payload)) }));
 }
 
-async function appendEvent(jobId: string, type: string, payload: any, actor: 'client') {
-  await db.execute({ sql: 'INSERT INTO job_events (job_id, type, payload, actor, created_at) VALUES (?, ?, ?, ?, ?)', args: [jobId, type, JSON.stringify(payload), actor, new Date().toISOString()] });
+async function appendEvent(jobId: string, type: string, payload: any, actor: 'client', executor: typeof db | Transaction = db) {
+  await executor.execute({ sql: 'INSERT INTO job_events (job_id, type, payload, actor, created_at) VALUES (?, ?, ?, ?, ?)', args: [jobId, type, JSON.stringify(payload), actor, new Date().toISOString()] });
 }
 
 clientRouter.get('/c/:token', async (req, res) => {
@@ -49,12 +50,12 @@ clientRouter.post('/c/:token/changes/:changeId/approve', async (req, res) => {
   const job = await getClientJob(req.params.token);
   if (!job) return res.status(404).json({ error: "This link isn't valid." });
 
-  await withTransaction(async () => {
-    const state = deriveJob(await getEvents(String(job.id)));
+  await withTransaction(async (tx) => {
+    const state = deriveJob(await getEvents(String(job.id), tx));
     if (state.invoice) return res.status(409).json({ error: 'Invoice already created' });
     const change = state.changes.find((c) => c.id === req.params.changeId);
     if (!change || change.status !== 'awaiting_client') return res.status(409).json({ error: 'Change cannot be approved' });
-    await appendEvent(String(job.id), 'CHANGE_APPROVED', { change_id: req.params.changeId }, 'client');
+    await appendEvent(String(job.id), 'CHANGE_APPROVED', { change_id: req.params.changeId }, 'client', tx);
   });
 
   res.json(deriveJob(await getEvents(String(job.id))));
@@ -65,12 +66,12 @@ clientRouter.post('/c/:token/changes/:changeId/dispute', async (req, res) => {
   const job = await getClientJob(req.params.token);
   if (!job) return res.status(404).json({ error: "This link isn't valid." });
 
-  await withTransaction(async () => {
-    const state = deriveJob(await getEvents(String(job.id)));
+  await withTransaction(async (tx) => {
+    const state = deriveJob(await getEvents(String(job.id), tx));
     if (state.invoice) return res.status(409).json({ error: 'Invoice already created' });
     const change = state.changes.find((c) => c.id === req.params.changeId);
     if (!change || change.status !== 'awaiting_client') return res.status(409).json({ error: 'Change cannot be disputed' });
-    await appendEvent(String(job.id), 'CHANGE_DISPUTED', { change_id: req.params.changeId, note: input.note }, 'client');
+    await appendEvent(String(job.id), 'CHANGE_DISPUTED', { change_id: req.params.changeId, note: input.note }, 'client', tx);
   });
 
   res.json(deriveJob(await getEvents(String(job.id))));

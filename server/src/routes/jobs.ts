@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Transaction } from '@libsql/client';
 import multer from 'multer';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
@@ -39,13 +40,13 @@ async function getJobOwnedByUser(jobId: string, userId: string) {
   return row.rows[0] as any;
 }
 
-async function getEvents(jobId: string) {
-  const rows = await db.execute({ sql: 'SELECT id, type, payload, actor, created_at FROM job_events WHERE job_id = ? ORDER BY id ASC', args: [jobId] });
+async function getEvents(jobId: string, executor: typeof db | Transaction = db) {
+  const rows = await executor.execute({ sql: 'SELECT id, type, payload, actor, created_at FROM job_events WHERE job_id = ? ORDER BY id ASC', args: [jobId] });
   return rows.rows.map((r: any) => ({ ...r, payload: JSON.parse(String(r.payload)) }));
 }
 
-async function appendEvent(jobId: string, type: string, payload: any, actor: 'contractor' | 'client' | 'paypal' | 'system') {
-  await db.execute({
+async function appendEvent(jobId: string, type: string, payload: any, actor: 'contractor' | 'client' | 'paypal' | 'system', executor: typeof db | Transaction = db) {
+  await executor.execute({
     sql: 'INSERT INTO job_events (job_id, type, payload, actor, created_at) VALUES (?, ?, ?, ?, ?)',
     args: [jobId, type, JSON.stringify(payload), actor, new Date().toISOString()]
   });
@@ -94,15 +95,15 @@ jobsRouter.post('/jobs', async (req, res, next) => {
     }
     const quote_usd_cents = convertMinorToUsdCents(amount_minor, rate_micros);
 
-    await withTransaction(async () => {
-      await db.execute({
+    await withTransaction(async (tx) => {
+      await tx.execute({
         sql: 'INSERT INTO jobs (id, user_id, title, client_name, client_email, share_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         args: [jobId, req.user!.id, input.title, input.client_name, input.client_email, shareToken, createdAt]
       });
       await appendEvent(jobId, 'JOB_CREATED', {
         quote_usd_cents,
         entered: { currency, amount_minor, rate_micros, as_of }
-      }, 'contractor');
+      }, 'contractor', tx);
     });
 
     const derived = deriveJob(await getEvents(jobId));
@@ -153,8 +154,8 @@ jobsRouter.post('/jobs/:id/changes', async (req, res) => {
   const job = await getJobOwnedByUser(req.params.id, req.user!.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
 
-  await withTransaction(async () => {
-    const state = deriveJob(await getEvents(String(job.id)));
+  await withTransaction(async (tx) => {
+    const state = deriveJob(await getEvents(String(job.id), tx));
     if (state.invoice) return res.status(409).json({ error: 'Invoice already created' });
 
     const amount_minor = parseAmountToCents(input.amount.amount);
@@ -180,7 +181,7 @@ jobsRouter.post('/jobs/:id/changes', async (req, res) => {
       entered: { currency, amount_minor, rate_micros, as_of },
       transcript: input.transcript,
       source: input.source
-    }, 'contractor');
+    }, 'contractor', tx);
   });
 
   const derived = deriveJob(await getEvents(String(job.id)));
@@ -191,12 +192,12 @@ jobsRouter.post('/jobs/:id/changes/:changeId/withdraw', async (req, res) => {
   const job = await getJobOwnedByUser(req.params.id, req.user!.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
 
-  await withTransaction(async () => {
-    const state = deriveJob(await getEvents(String(job.id)));
+  await withTransaction(async (tx) => {
+    const state = deriveJob(await getEvents(String(job.id), tx));
     if (state.invoice) return res.status(409).json({ error: 'Invoice already created' });
     const change = state.changes.find((c) => c.id === req.params.changeId);
     if (!change || change.status !== 'awaiting_client') return res.status(409).json({ error: 'Change is not withdrawable' });
-    await appendEvent(String(job.id), 'CHANGE_WITHDRAWN', { change_id: req.params.changeId }, 'contractor');
+    await appendEvent(String(job.id), 'CHANGE_WITHDRAWN', { change_id: req.params.changeId }, 'contractor', tx);
   });
 
   const derived = deriveJob(await getEvents(String(job.id)));
@@ -207,8 +208,8 @@ jobsRouter.post('/jobs/:id/invoice', async (req, res) => {
   const job = await getJobOwnedByUser(req.params.id, req.user!.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
 
-  await withTransaction(async () => {
-    const events = await getEvents(String(job.id));
+  await withTransaction(async (tx) => {
+    const events = await getEvents(String(job.id), tx);
     const state = deriveJob(events);
     if (state.pending_count !== 0 || state.invoice || state.total_cents <= 0) {
       return res.status(409).json({ error: 'Invoice cannot be created yet' });
@@ -221,7 +222,7 @@ jobsRouter.post('/jobs/:id/invoice', async (req, res) => {
     const sum = line_items.reduce((s, i) => s + i.usd_cents, 0);
     if (sum !== state.total_cents) return res.status(409).json({ error: 'Invoice total mismatch' });
 
-    const userRow = await db.execute({ sql: 'SELECT business_name FROM users WHERE id = ?', args: [req.user!.id] });
+    const userRow = await tx.execute({ sql: 'SELECT business_name FROM users WHERE id = ?', args: [req.user!.id] });
     const business_name = String((userRow.rows[0] as any).business_name);
 
     const invoice = await createInvoice({
@@ -234,13 +235,13 @@ jobsRouter.post('/jobs/:id/invoice', async (req, res) => {
       lineItems: line_items
     });
 
-    await db.execute({ sql: 'UPDATE jobs SET paypal_invoice_id = ? WHERE id = ?', args: [invoice.paypal_invoice_id, job.id] });
+    await tx.execute({ sql: 'UPDATE jobs SET paypal_invoice_id = ? WHERE id = ?', args: [invoice.paypal_invoice_id, job.id] });
     await appendEvent(String(job.id), 'INVOICE_CREATED', {
       paypal_invoice_id: invoice.paypal_invoice_id,
       total_usd_cents: state.total_cents,
       pay_url: invoice.pay_url,
       line_items
-    }, 'system');
+    }, 'system', tx);
   });
 
   const derived = deriveJob(await getEvents(String(job.id)));
@@ -253,8 +254,8 @@ jobsRouter.post('/jobs/:id/invoice/refresh', async (req, res) => {
   const invoiceId = String(job.paypal_invoice_id || '');
   if (!invoiceId) return res.status(409).json({ error: 'No invoice exists' });
 
-  await withTransaction(async () => {
-    const events = await getEvents(String(job.id));
+  await withTransaction(async (tx) => {
+    const events = await getEvents(String(job.id), tx);
     const state = deriveJob(events);
     if (state.invoice?.status === 'paid') return;
     const remote = await getInvoiceStatus(invoiceId);
@@ -262,7 +263,7 @@ jobsRouter.post('/jobs/:id/invoice/refresh', async (req, res) => {
       await appendEvent(String(job.id), 'INVOICE_PAID', {
         paypal_invoice_id: invoiceId,
         amount_usd_cents: state.total_cents
-      }, 'paypal');
+      }, 'paypal', tx);
     }
   });
 
