@@ -54,6 +54,17 @@ If the Web Service already exists, add the same variables under Render's
 Environment settings before redeploying. Do not commit these values to the
 repository.
 
+## Google sign-in setup
+
+Create a Google OAuth web client and add these redirect URIs:
+
+- `http://localhost:3000/api/auth/google/callback`
+- `https://YOUR-TRATO-URL.onrender.com/api/auth/google/callback`
+
+Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and
+`GOOGLE_CALLBACK_URL` in local `.env` and Render. The callback URL must exactly
+match the selected deployment URL.
+
 ## How PayPal is used (hackathon summary)
 
 - Trato creates one invoice per job from deterministic backend totals (original quote + approved changes only).

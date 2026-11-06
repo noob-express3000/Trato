@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  google_sub TEXT UNIQUE,
   business_name TEXT NOT NULL,
   local_currency TEXT NOT NULL DEFAULT 'USD',
   created_at TEXT NOT NULL

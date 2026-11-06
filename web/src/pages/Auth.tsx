@@ -41,6 +41,7 @@ export function AuthPage() {
         )}
         {error && <p className="text-sm text-red-700">{error}</p>}
         <button className="h-11 w-full rounded-2xl bg-indigo-600 text-white" onClick={submit}>{create ? 'Create account' : 'Sign in'}</button>
+        <a className="block h-11 rounded-2xl border border-stone-300 py-3 text-center text-sm" href="/api/auth/google">Continue with Google</a>
         <button className="text-sm text-stone-600" onClick={() => setCreate((v) => !v)}>{create ? 'Have an account? Sign in' : 'Need an account? Create one'}</button>
       </div>
     </main>
