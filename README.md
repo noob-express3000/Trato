@@ -28,6 +28,20 @@ See `.env.example`.
 - In development, the app runs in degraded mode when optional AI/PayPal credentials are absent.
 - In production, required secrets are validated at startup and the process fails fast if missing.
 
+### Google OAuth setup
+
+1. In Google Cloud Console, create/select a project and configure the OAuth consent screen.
+2. Create a Web OAuth client and set the authorized redirect URI to `PUBLIC_BASE_URL/api/auth/google/callback` (for local dev: `http://localhost:3000/api/auth/google/callback`).
+3. Set these environment variables:
+   - `GOOGLE_OAUTH_CLIENT_ID`
+   - `GOOGLE_OAUTH_CLIENT_SECRET`
+   - `GOOGLE_OAUTH_CALLBACK_URL` (must match the Google OAuth redirect URI exactly)
+   - `GOOGLE_OAUTH_ALLOWED_ORIGIN` (frontend origin to redirect back to after login, e.g. `http://localhost:3000`)
+
+Auth flow notes:
+- Trato uses Google OAuth (openid/email/profile) and does not collect passwords for new sign-ins.
+- Existing local accounts are linked once by verified email when a user signs in with Google.
+
 ## PayPal Sandbox setup
 
 1. In PayPal Developer Dashboard, create a REST app and copy Sandbox `client id` and `secret`.

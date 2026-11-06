@@ -1,11 +1,16 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
+  provider TEXT NOT NULL DEFAULT 'local',
+  provider_user_id TEXT,
   business_name TEXT NOT NULL,
   local_currency TEXT NOT NULL DEFAULT 'USD',
   created_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider_identity
+ON users(provider, provider_user_id)
+WHERE provider_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
