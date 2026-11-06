@@ -15,7 +15,10 @@ const envSchema = z.object({
   PAYPAL_WEBHOOK_ID: z.string().optional(),
   PAYPAL_BASE_URL: z.string().url().default('https://api-m.sandbox.paypal.com'),
   PAYPAL_MOCK: z.enum(['true', 'false']).default('false'),
-  PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000')
+  PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CALLBACK_URL: z.string().url().optional()
 });
 
 const env = envSchema.parse(process.env);
@@ -41,5 +44,6 @@ if (!env.JWT_SECRET && env.NODE_ENV !== 'production') {
 export const config = {
   ...env,
   JWT_SECRET: env.JWT_SECRET || 'dev-only-secret-change-me',
-  PAYPAL_MOCK: env.PAYPAL_MOCK === 'true'
+  PAYPAL_MOCK: env.PAYPAL_MOCK === 'true',
+  GOOGLE_CALLBACK_URL: env.GOOGLE_CALLBACK_URL || `${env.PUBLIC_BASE_URL}/api/auth/google/callback`
 };

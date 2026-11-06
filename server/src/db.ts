@@ -44,6 +44,11 @@ export async function bootstrapDb() {
   for (const statement of statements) {
     await db.execute(statement);
   }
+  const columns = await db.execute("PRAGMA table_info('users')");
+  if (!columns.rows.some((column) => String((column as { name?: string }).name) === 'google_sub')) {
+    await db.execute('ALTER TABLE users ADD COLUMN google_sub TEXT');
+    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)');
+  }
 }
 
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
