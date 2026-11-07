@@ -4,11 +4,12 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     .map((c) => c.trim())
     .find((c) => c.startsWith('csrf_token='))
     ?.split('=')[1];
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(path, {
     ...init,
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(csrf ? { 'x-csrf-token': decodeURIComponent(csrf) } : {}),
       ...(init?.headers || {})
     }
