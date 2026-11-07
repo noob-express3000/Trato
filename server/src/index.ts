@@ -36,10 +36,10 @@ app.use((req, res, next) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
-app.use('/api', jobsRouter);
 app.use('/api', clientRouter);
 app.use('/api/webhooks', webhookRouter);
 app.use('/', mockRouter);
+app.use('/api', jobsRouter);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDist = path.resolve(__dirname, '../../web/dist');
