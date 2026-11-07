@@ -5,6 +5,8 @@ import { ChangeCard } from '../components/ChangeCard';
 import { MicButton } from '../components/MicButton';
 import { ReviewCard } from '../components/ReviewCard';
 import { formatUsd } from '../money';
+import { AppShell } from '../components/AppShell';
+import { Link } from 'react-router-dom';
 
 export function JobPage() {
   const { id } = useParams();
@@ -12,6 +14,8 @@ export function JobPage() {
   const [error, setError] = useState('');
   const [recording, setRecording] = useState(false);
   const [review, setReview] = useState<any | null>(null);
+  const [busy, setBusy] = useState('');
+  const [copied, setCopied] = useState(false);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -41,8 +45,7 @@ export function JobPage() {
       const blob = new Blob(chunksRef.current, { type: mime });
       const form = new FormData();
       form.append('audio', blob, 'note.webm');
-      const res = await fetch(`/api/jobs/${id}/draft-change`, { method: 'POST', body: form, credentials: 'include' });
-      const data = await res.json();
+      const data = await api<any>(`/api/jobs/${id}/draft-change`, { method: 'POST', body: form });
       const draft = data.draft || {};
       setReview({
         transcript: data.transcript || '',
@@ -61,31 +64,39 @@ export function JobPage() {
 
   async function sendChange() {
     if (!review) return;
-    await api(`/api/jobs/${id}/changes`, {
-      method: 'POST',
-      body: JSON.stringify({
-        description: review.description,
-        amount: { currency: review.currency, amount: review.amount },
-        days_delta: review.days_delta,
-        transcript: review.transcript,
-        source: review.source
-      })
-    });
-    setReview(null);
-    await load();
+    setBusy('change');
+    try {
+      await api(`/api/jobs/${id}/changes`, {
+        method: 'POST',
+        body: JSON.stringify({
+          description: review.description,
+          amount: { currency: review.currency, amount: review.amount },
+          days_delta: review.days_delta,
+          transcript: review.transcript,
+          source: review.source
+        })
+      });
+      setReview(null);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy('');
+    }
   }
 
   const pendingHint = useMemo(() => job?.pending_count ? `${job.pending_count} changes awaiting the client` : '', [job]);
 
-  if (!job) return <main className="mx-auto max-w-md p-4">Loading… {error && <p>{error}</p>}</main>;
+  if (!job) return <main className="mx-auto max-w-md p-4">{error ? <div className="rounded-2xl bg-red-50 p-4 text-red-700">{error}</div> : <div className="h-32 animate-pulse rounded-2xl bg-stone-200" />}</main>;
 
   return (
-    <main className="mx-auto max-w-md p-4 pb-28">
-      <p className="text-sm text-stone-600">{job.client_name}</p>
-      <h1 className="text-xl font-semibold">{job.title}</h1>
+    <AppShell><main className="mx-auto max-w-3xl p-4 pb-28 sm:p-6">
+      <Link to="/jobs" className="text-sm text-indigo-600">← Back to jobs</Link>
+      <p className="mt-5 text-sm text-stone-600">{job.client_name}</p>
+      <h1 className="text-2xl font-semibold">{job.title}</h1>
       <p className="mt-3 text-4xl font-semibold">{formatUsd(job.total_cents)}</p>
       <div className="mt-2 flex gap-4 text-sm">
-        <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/c/${job.share_token}`)} className="text-indigo-600">Copy client link</button>
+        <button onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/c/${job.share_token}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="text-indigo-600">{copied ? 'Copied!' : 'Copy client link'}</button>
         {!job.invoice && <button onClick={async () => { await api(`/api/jobs/${id}/invoice`, { method: 'POST' }); await load(); }} className="text-indigo-600" disabled={job.pending_count > 0}>{job.pending_count > 0 ? pendingHint : 'Create invoice'}</button>}
       </div>
       {job.invoice && (
@@ -98,11 +109,11 @@ export function JobPage() {
         </div>
       )}
       <div className="mt-4 space-y-3">
-        <div className="rounded-2xl border border-stone-200 p-4"><p className="font-medium">Original quote</p><p className="text-sm text-stone-600">{formatUsd(job.quote_cents)}</p></div>
+        <div className="rounded-2xl border border-stone-200 bg-white p-4"><p className="font-medium">Original quote</p><p className="text-sm text-stone-600">{formatUsd(job.quote_cents)}</p></div>
         {job.changes.map((change: any) => <ChangeCard key={change.id} change={change} onWithdraw={async () => { await api(`/api/jobs/${id}/changes/${change.id}/withdraw`, { method: 'POST' }); await load(); }} />)}
       </div>
-      {review && <div className="fixed bottom-24 left-0 right-0 mx-auto max-w-md px-4"><ReviewCard transcript={review.transcript || "We couldn't find a change in that. Edit below or try again."} values={review} setValues={setReview} onSubmit={sendChange} onDiscard={() => setReview(null)} /></div>}
-      <div className="fixed bottom-4 left-0 right-0 mx-auto flex max-w-md items-center justify-center gap-4 px-4">
+      {review && <div className="fixed bottom-24 left-0 right-0 mx-auto max-w-md px-4"><ReviewCard transcript={review.transcript || "We couldn't find a change in that. Edit below or try again."} values={review} setValues={setReview} onSubmit={sendChange} onDiscard={() => setReview(null)} submitting={busy === 'change'} /></div>}
+      <div className="fixed bottom-4 left-0 right-0 mx-auto flex max-w-3xl items-center justify-center gap-4 px-4">
         <MicButton recording={recording} onClick={startOrStop} />
         <button
           className="text-sm text-stone-600"
@@ -121,6 +132,6 @@ export function JobPage() {
           Type instead
         </button>
       </div>
-    </main>
+    </main></AppShell>
   );
 }

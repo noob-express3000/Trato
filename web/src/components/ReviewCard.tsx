@@ -1,6 +1,6 @@
 import { AmountInput } from './AmountInput';
 
-export function ReviewCard({ transcript, values, setValues, onSubmit, onDiscard, hint }: any) {
+export function ReviewCard({ transcript, values, setValues, onSubmit, onDiscard, hint, submitting }: any) {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-4">
       <p className="text-sm text-stone-500">{transcript}</p>
@@ -12,7 +12,7 @@ export function ReviewCard({ transcript, values, setValues, onSubmit, onDiscard,
       <label className="mt-3 block text-sm">Extra days</label>
       <input className="mt-1 h-11 w-full rounded-2xl border border-stone-300 px-3" type="number" value={values.days_delta} onChange={(e) => setValues({ ...values, days_delta: Number(e.target.value) })} />
       <div className="mt-4 flex gap-2">
-        <button className="h-11 rounded-2xl bg-indigo-600 px-4 text-white" onClick={onSubmit}>Send to client</button>
+        <button className="h-11 rounded-2xl bg-indigo-600 px-4 text-white disabled:opacity-60" onClick={onSubmit} disabled={submitting}>{submitting ? 'Sending…' : 'Send to client'}</button>
         <button className="h-11 rounded-2xl px-4 text-stone-700" onClick={onDiscard}>Discard</button>
       </div>
     </div>
